@@ -1,0 +1,595 @@
+---
+title: "Statistics and Probability Project"
+output: html_notebook
+---
+
+## ADULT CENSUS INCOME
+
+
+### Stage 0 and 1
+
+Link to the dataset: https://www.kaggle.com/uciml/adult-census-income
+
+
+#### Step 1.1 and 1.2 - Dataset and variables description, reason why it has been chosen
+
+This dataset that is going to be analyzed is based on a public census survey made in the Unites States of America in 1994, it includes several demographic data of the respondents and aims to relate them to their income and other economic performance (Capital Loss and Gain, hrs worked in a week) data in the same year.
+
+This is an open dataset, so no permission for using it was required, it has been obtained from Kaggle.com.
+
+The set consist of 15 different columns/variables for up to 32,561 entries each.
+
+It has been chosen for this project because it appears to be fit for regression tasks and multivariate analysis because it has a good number (6) of numerical variables, it also has only a relative little number of missing entries that can be easily dealt with.
+
+About the variables:
+
+There are eight purely demographic variables, all assumed to be independent, most of them (except for Age and Education Num that are numerical) are categorical and discrete. Those are: Age, Education and Education Number, Martial Status, Relationship, Race, Sex and Native country.
+
+Then there are 6 economic related variable, some categorical and discrete: Workclass, Occupation, Income (considered in the categorical form <=50k and >50K); some numerical and discrete (because being reported by integer don't have any underlying continuum): Capital Loss, Capital Gain and Hours Per Week.
+
+The Aim of this project is to find if any of the economic variables are dependent on the purely demographic ones such as Age and Education Num. (number of years of studying).
+The variable fnlwgt is a sampling weight, it is not related to the target variables and will be omitted in the analysis.
+
+Some Variable have missing entries, those are going to be dealt with in Step 1.3
+
+```{r}
+df <- read.csv("adult.csv")
+df[ df == "?" ] <- NA
+```
+
+```{r}
+catOrNum <- function(x) ifelse(x == "integer", "numerical", "categorical")
+
+capitalize <- function(x, sep = " ") {
+  words <- strsplit(x, sep)[[1]]
+  paste(toupper(substring(words, 1,1)), substring(words, 2), sep="", collapse=" ")
+}
+
+varSummary <- function(df) {
+  entryNumber <- nrow(df)
+  varNumber <- length(df)
+  varTypes <- catOrNum(sapply(df, class))
+  varNames <- names(df)
+  nonNaCount <- colSums(!is.na(df))
+  naCount <- colSums(is.na(df))
+  sumry <- sprintf("%d entries", entryNumber)
+  sumry <- paste(sumry, sprintf("Data columns: (total %d columns)", varNumber), sep = "\n")
+  sumry <- paste(sumry, 
+                 " #   Column Name         Non-NA Count        NA Count        Variable Type",
+                 sep = "\n")
+  sumry <- paste(sumry,
+                "---  -----------         ------------        --------        -------------",
+                sep = "\n")
+  for (i in 1:length(df)) {
+    s <- sprintf("%d non-NA", nonNaCount[i])
+    s1 <- sprintf("%4d NA", naCount[i])
+    varName <- capitalize(varNames[i], "[.]")
+    sumry <- paste(sumry,
+                   sprintf(" %-2d  %-20s%-20s%-16s%s", i, varName, s, s1, varTypes[i]),
+                   sep = "\n")
+  }
+  return(sumry)
+
+}
+
+```
+
+```{r}
+message(varSummary(df))
+```
+
+
+#### Step 1.3 - Missing data
+
+In the dataset there are three columns with missing data: “Workclass” has 1836 missing entries, “Occupation” has 1843 of those while “Native country” has only 583 missing.
+
+The following solutions have been adopted:
+
+Has been noticed that the missing values for the “Workclass” column always corresponds to missing values on the “Occupation” column (except for 7 neglectable cases). Both columns refer to the status in the Job market communicated by the respondents to the survey and in both of the columns there are no possible value to express the status of being outside of the workforce or unemployment, also those missing values are around 5.65% of the total 32,561 possible entries. 
+After some research has been found that the unemployment rate in the US in the year 1994 was 5.5% (https://www.thebalance.com/unemployment-rate-by-year-3305506), was than considered safe to assume that those respondents where actually unemployed and out of the workclass at the time of the survey.
+It is than be decided to replace the NA in “Workclass” with the value “Out-of-workforce” and the NA in “Occupation” with the value “Unemployed”.
+
+When comes to the column “Native country”, despite the lower amount of NA, it has been decided to exclude it from the dataset because already marginal to the scope of the research being a categorical variable and very homogenous with one value "United-States" at 90%, hence non useful for linear relationship analysis and regression task.   
+
+```{r}
+drops <- c("fnlwgt", "native.country")
+df <- df[,!(names(df) %in% drops)]
+
+df$workclass <- ifelse(is.na(df$workclass), "Out-of-workforce", df$workclass)
+df$occupation <- ifelse(is.na(df$occupation), "Unemployed", df$occupation)
+
+message(varSummary(df))
+```
+
+
+#### Step 1.4 - Data visualization, distribution graphs
+
+```{r}
+library("ggplot2")
+```
+
+```{r}
+makeVisualization <- function(df) {
+  varTypes <- catOrNum(sapply(df, class))
+  varNames <- names(df)
+  for (i in 1:length(df)) {
+      varName <- capitalize(varNames[i], "[.]")
+      
+      if (varTypes[i] == "categorical") {
+        chartTitle <- sprintf("Barchart for %s", varName)
+        data <- df[, i]
+        data <- as.data.frame(round(prop.table(table(data))*100, digits = 1))
+        plt <- ggplot(data=data, aes(x=data, y=Freq)) +
+          geom_bar(stat="identity", fill="steelblue")+
+          geom_text(aes(label=Freq), vjust=-0.3, size=3.5)+
+          ggtitle(chartTitle) +
+          theme(axis.text.x = element_text(angle = 45, hjust=1))
+        print(plt)
+      } else {
+        chartTitle <- sprintf("Histogram of %s", varName)
+        
+        plt <- ggplot(df, aes_string(x=varNames[i])) + 
+          geom_histogram(colour="black", fill="white", bins = 16)+
+          geom_density(alpha=.2, fill="#FF6666") +
+          ggtitle(chartTitle)
+        print(plt)
+        #hist(data, main = chartTitle, xlab = varName)
+      }
+  }
+}
+
+makeVisualization(df)
+```
+
+
+#### Step 1.5 - Graphs description
+
+Before a quantitative overview of the data there is already something to be seen from those graphs:
+
+Age: This graph appears to be positively skewed, most of the respondents to the survey are under 50 so well in to what is commonly considered to be active working age.
+
+Education: The value with the highest frequency is to have an High School Diploma.
+
+Education Num.: The graph appears to be centered, that's not surprising, it is already known from the previous graph that most of the people have an HS Diploma, so this graph shows the number of years they used to achieve that.
+
+Race: Most of the people in this sample are white, 85.4%
+
+Sex: 66.9%, 33,1%, those data about sex distribution make question about the validity of the sample. A data closed to 50/50 was expected.
+
+Marital Status: 46% married at the time of the survey.
+
+Relationship: A surprising 40.5% of husbands against a 4.8% of wifes, partially explained with the disproportion of genders in the sample.
+
+Workclass: A very strong frequency appears to be evident with almost 70% of the peaple working for private companies.
+
+Occupation: No value has a frequency higher than 12.7%.
+
+Income: only 1/4 of the people earns more than 50k, unfortunately this data is given in the form of a categorical one with only two possible values, a numerical variable would have allowed for much more interesting analyses. 
+
+Capital Loss/Gain: most of the respondent have answered 0 at both of them, it's also known that one value different from 0 in a column must correspond to 0 in the other one.
+
+Hours per Week: This graph looks to be very centered around the value of 40.
+
+
+### Stage 2
+
+
+#### Step 2.1 - Quantitative overview of data
+
+```{r}
+summary(df)
+```
+
+```{r}
+computeMode <- function(v) {
+   uniqv <- unique(v)
+   uniqv[which.max(tabulate(match(v, uniqv)))]
+}
+
+centralitySummary <- function(df) {
+  varTypes <- catOrNum(sapply(df, class))
+  varNames <- names(df)
+  smry <- "Central Tendency Measures"
+  smry <- paste(smry, 
+                " #   Column Name         Mean       Mode     Median     Trimean     Geo Mean",
+                sep = "\n")
+  smry <- paste(smry, 
+                "---  -----------         ----       ----     ------     -------     --------",
+                sep = "\n")
+  for (i in 1:length(df)) {
+    if (varTypes[i] != "numerical") {
+      next
+    }
+    data <- df[, i]
+    varName <- capitalize(varNames[i], "[.]")
+    qnt <- quantile(data)
+    me <- round(mean(data), digits = 2)
+    mod <- computeMode(data)
+    med <- round(qnt[3], digits = 1)
+    triMe <- round((qnt[2] + 2*qnt[3] + qnt[4])/4, digits = 2)
+    geoMe <- round(exp(mean(log(data))), digits = 2)
+    smry <- paste(smry,
+                  sprintf(" %-2d  %-20s%-11.2f%-9d%-11.1f%-12.2f%-12.2f",
+                          i, varName, me, mod, med, triMe, geoMe),
+                  sep = "\n")
+  }
+  return(smry)
+}
+
+message(centralitySummary(df))
+```
+
+
+```{r}
+variabilitySummary <- function(df) {
+  varTypes <- catOrNum(sapply(df, class))
+  varNames <- names(df)
+  smry <- "Variability Measures"
+  smry <- paste(smry,
+                " #   Column Name         Range     IQ range  Var             Std Dev",
+                sep = "\n")
+  smry <- paste(smry,
+                "---  -----------         -----     --------  ---             -------",
+                sep = "\n")
+  
+  for (i in 1:length(df)) {
+    if (varTypes[i] != "numerical") {
+      next
+    }
+    data <- df[, i]
+    varName <- capitalize(varNames[i], "[.]")
+    
+    rng <- range(data)
+    qiRng <- round(IQR(data), digits = 2)
+    vr <- round(var(data), digits = 2)
+    stdDev <- round(sd(data), digits = 2)
+    
+    smry <- paste(smry,
+                  sprintf(" %-2d  %-20s%-10d%-10.1f%-16.2f%-10.2f", 
+                          i, varName, rng[2] - rng[1], qiRng, vr, stdDev),
+                  sep = "\n")
+  }
+  return(smry)
+}
+
+message(variabilitySummary(df))
+```
+
+**Box Plots**
+```{r}
+makeBoxPlots <- function(df) {
+  varTypes <- catOrNum(sapply(df, class))
+  varNames <- names(df)
+  for (i in 1:length(df)) {
+      varName <- capitalize(varNames[i], "[.]")
+      chartTitle <- sprintf("Boxplot of %s", varName)
+      data <- df[, i]
+      if (varTypes[i] == "numerical") {
+        boxplot(data, horizontal = TRUE, main = chartTitle, xlab = varName, 
+                col = c("#56B4E9"), outcol=c("#56B4E9"))
+      }
+  }
+}
+```
+
+
+```{r}
+makeBoxPlots(df)
+```
+
+
+#### Step 2.2 - central tendency/ variability measures analysis
+
+Age: From the 3 main central tendencies measures (Mode=36 < Median=37  < Mean=38.58),the IQ Range 20 and the Standard Deviation of 13.64 it is possible to confirm the first impression had looking at the histogram of a positively skewed distribution, centered on the left side.
+
+Education Num.: From the 3 main central tendencies measures (all included between 9 and 10.08),the IQ Range 3.0 and the Standard Deviation of 2.57 we can confirm the first impression had looking at the histogram of a centered distribution with no significant skew.  
+
+Capital Loss/Gain: Mode and Median equal to 0 simply confirms what already spotted looking at the histogram: the overwhelming part of respondent give value zero to those variables. This is also confirmed by the variability mesure IQ range equal to 0 for both.
+
+Hours per Week: From the 3 main central tendencies measures (all included between 40 and 40.44),the IQ Range 5.0 and the Standard Deviation of 12.35 we can confirm the first impression had looking at the histogram of a centered distribution around the value of 40.
+
+
+### Stage 3
+
+
+#### Step 3.1 - Linear relationships
+
+**Correlation Matrix**
+```{r}
+if (!("corrplot" %in% rownames(installed.packages()))) {
+  install.packages("corrplot")
+}
+library(corrplot)
+numVars <- Filter(function(x) catOrNum(class(df[, x])) == "numerical",
+                  names(df))
+corrplot(cor(df[numVars]), method="number", col= colorRampPalette(c("red","purple","blue"))(12))
+```
+The Correlation Matrix has been made relating in couples the 5 numerical variables: age, education.mun, capital.gain, capital.loss and hours.per.week. Among those the highest correlation appears to be the one betwen hours.per.week and education.num at 0.15. Capital.gain has correlation of 0.12 whit education.num. 
+
+Between the two demographic variables (assumed indipendent) considered in the matrix (age and education.num) education.num appears to correlate more with the three economic ones (assumed to be dependent). 
+
+
+#### Step 3.2
+
+From the correlation analysis result has been found that education.num has the highest correlation with the dependent variable hours.per.week (0.15). Age is much less at 0.7.
+
+**Scatter Plots**
+```{r}
+ggplot(df,
+       aes(x = education.num,
+           y = hours.per.week)) +
+  geom_point(color="steelblue", 
+             size = 2, 
+             alpha=.8) + 
+  labs(title = "Scatter plot of Education Num and Hours Per Week")
+
+ggplot(df,
+       aes(x = age,
+           y = hours.per.week)) +
+  geom_point(color="steelblue", 
+             size = 2, 
+             alpha=.8) + 
+  labs(title = "Scatter plot of Age and Hours Per Week")
+```
+It is Known from the previous correlation analysis that there is a slight positive correlation between the years invested for education and the hours worked during the week. 
+
+Unfortunately because of the high number of entries (dots) and low number of possible values of education.num (16) this new graph doesn't seem to be extremely clear and helpful to spot new information, non the less a bigger density of dots on the top side of the graph moving from left to right may be appreciated, suggesting, again, a positive correlation.
+
+
+#### Step 3.3 - linear regression model
+
+**Scatter Plot with Line**
+```{r}
+summary(lm(hours.per.week ~ education.num, data=df))
+
+ggplot(df,
+       aes(x = education.num, 
+           y = hours.per.week)) +
+  geom_point(color= "steelblue") +
+  geom_smooth(method = "lm",
+              color="indianred3")
+```
+
+The regression "line" definitely helps to give more sense of the scatter plot graph, the correlation is now graphically represented by it. The positive nature of the correlation is expressed by the positive slope of the line.
+
+
+#### Step 3.4 - Regression with several variables and other algorithms 
+
+
+```{r}
+summary(lm(capital.gain ~ age, data=df))
+
+ggplot(df,
+       aes(y = capital.gain, 
+           x = age)) +
+  geom_point(color= "steelblue") +
+  geom_smooth(method = "lm",
+              color="indianred3")
+```
+
+
+**Polynomial Regression** 
+```{r}
+summary(lm(poly(hours.per.week, 2) ~ education.num, data=df))
+
+ggplot(df,
+       aes(x = education.num, 
+           y = hours.per.week)) +
+  geom_point(color= "steelblue") +
+  geom_smooth(method = "lm",
+              formula = y ~ poly(x, 2),
+              color="indianred3")
+```
+
+
+### Stage 4 - Probability theory 
+
+
+#### Step 4.1 - Pick up a lottery
+
+**SUPERENALOTTO**
+
+SuperEnalotto is the most famous and popular lottery in Italy, it has been played since 3 December 1997. Tickets cost one Euro for one try. Draws take place on Tuesdays, Thursdays and Saturdays at 8:00 PM. The lottery is also appealing to players because winnings are taxed at only 12% on the excess over 500 euros, with tax withheld  at the time of payout and jackpot winners have the option for a lump sum or annuity payment.
+
+During every draw 7 number are randomly extracted out of a pool of 90 (1 to 90): 6 winning numbers plus a "Jolly" number with no possible repetitions.
+
+The objective of the game is to match the 6 numbers extracted out of 90 to hit the jackpot. Besides the jackpot, SuperEnalotto has other five prize categories that players can win. One player must match at least 2 numbers to win.
+
+The 6 prize categories are: 6, 5+Jolly number, 5, 4, 3, 2.
+
+The "Jolly" number gives an additional chance to those who have matched 5 numbers. If they also match the "Jolly" number (using their last 6th but non-winning number with the Jolly), they'll win a higher "5+1" prize. The Jolly number only affects the second prizes and not the jackpot.
+
+The odds of winning the SuperEnalotto jackpot are one of the lowest in the world, but on the other side SuperEnalotto jackpots grow very high because there is no cap on them and no roll down of jackpots. The jackpots won are among the largest in the world.
+
+
+#### Steps 4.2,4.3 and 4.4 - Report with computation and explanation
+
+**COMPUTATION OF WINNNING PROBABILITY**
+
+To compute the probability of winning the lottery, we can define a random variable $X$ expressing the number of numbers matched.
+We can define the sample set $\Omega$ as the set containing all the possible combinations with no repetitions obtained by extracting $k$ numbers out of $n$, so we have $|\Omega| = \binom{n}{k}$.
+
+Then, we need to compute the number of outcomes that give rise to $X = x$. In our case, x can take values 2,3,4 or 6.
+We can obtain the number of outcomes with $X = x$ by computing the product between the possible ways of selecting $x$ matching numbers out of the $k$ extracted, $\binom{k}{x}$, and the possible ways of selecting $k - x$ non matching numbers with the $n - k$ numbers not extracted, $\binom{n - k}{k - x}$.  
+
+Hence, by combining all the observations from above, we have that the probability of winning by matching $x$ numbers in the extraction is given by
+
+$$P[X = x] = \frac{\binom{k}{x}\cdot \binom{n - k}{k - x}}{\binom{n}{k}}$$
+
+In our case, we have $n = 90$ and $k = 6$, while $x$ can take values 2,3,4 or 6.
+
+A slightly different consideration must be done for the case of winning by matching 5 numbers, because in that case the "Jolly" variable enters in the game. To this purpose, let us define a new random variable $Y$ expressing the number of Jolly numbers we match. 
+
+We do not need to change the definition of the sample set from before. However, we need to compute the number of outcomes that give rise to $X = x$ and $Y = y$.
+
+We can obtain such a number by computing the product between the possible ways of selecting $x$ matching number out of the $k$ extracted ones, $\binom{k}{x}$, the possible ways of selecting $y$ Jolly numbers out of $g$ numbers extracted as Jollies, $\binom{g}{y}$, and the possible ways of selecting $k - x - y$ non matching numbers with the $n - k - g$ non extracted numbers, $\binom{n - k - g}{k - x - y}$. Hence, by combining all the observations from above, we have that the probability of winning by matching $x$ numbers in the extraction is given by:
+
+$$P[X = x, Y = y] = \frac{\binom{k}{x}\cdot \binom{g}{y} \cdot \binom{n - k - g}{k - x - y}}{\binom{n}{k}}$$
+
+In our case, we have $g = 1$, while $x$ can take only value 5 and $y$ can take values $0$ in the case of winning by matching 5 numbers and $1$ in the case of winning by matching 5 numbers and the Jolly.
+
+To compute the probabilities of winning the SuperEnalotto, we can define the following function in R:
+
+```{r}
+lotteryProb <- function(x, y = 0, k = 6, n = 90, g = 0){
+  return((choose(k, x)*choose(g, y)*choose(n - k - g, k - x - y))/choose(n, k))
+}
+```
+
+Hence, the probabilities of winning are given by:
+
+```{r}
+for (i in 6:2) {
+  if (i == 5) {
+    prob <- lotteryProb(5, y = 1, g = 1)
+    message(sprintf("P[X = %d, Y = 1] = %e      1 over %d", i, lotteryProb(i), round(1/prob)))
+    prob <- lotteryProb(5, g = 1)
+    message(sprintf("P[X = %d, Y = 0] = %e      1 over %d", i, lotteryProb(i), round(1/prob)))
+  } else {
+    prob <- lotteryProb(i)
+    message(sprintf("P[X = %d, Y = 0] = %e      1 over %d", i, lotteryProb(i), round(1/prob)))
+  }
+}
+```
+
+As evident from those numbers, the probability of any win to happen is quite low, only around 1 over 20, with the pay off of the most common win (2) being very low.
+
+It is possible to compute the expected value for any single bet. To this purpose, the average prize values that are reported in the following table is going to be used:
+
+| Matched Numbers  | Prize         |
+|:----------------:|:-------------:|
+|        6         | 53512216 €    |
+|       5+Jolly    | 1709086 €     |
+|        5         | 50070 €       |
+|        4         | 385.71 €      |
+|        3         | 19.22 €       |
+|        2         | 5.48 €        |
+
+source: (https://www.superenalotto.com/vincitori)
+
+We can define the real valued function $f(X)$ of $X$ associating a prize to a winning by matching $x$ numbers and the real valued function $g(X, Y)$ of $X$ and $Y$ associating a prize to a winning by matching $x$ numbers and $y$ Jollies.
+
+The expected value of the winning is given by:
+
+$$E[f(X)] + E[g(X, Y)] = \sum_{x\in\{6,4,3,2\}} f(x)P[X = x] +  \sum_{y\in\{0,1\}} f(x)P[X = 5, Y = y]$$
+
+This value can be computed in R as follows: 
+
+```{r}
+expVal <- lotteryProb(6)*53512216
+expVal <- expVal + lotteryProb(5, y = 1, g = 1)*1709086 
+expVal <- expVal + lotteryProb(5, g = 1)*50070 
+expVal <- expVal + lotteryProb(4)*385.71
+expVal <- expVal + lotteryProb(3)*19.22
+expVal <- expVal + lotteryProb(2)*5.48
+
+message(sprintf("E[f(X)] + E[g(X, Y)] = %.2f", round(expVal, digits = 2)))
+```
+
+0.49 is a very low expected value in the world of gambling, much worst even than most of the tables at the casino!
+
+Considering the Jackpot alone the odds to strike it are less than 1 over 600 millions, even whit the highest money on the pot (historical records around 200 millions) the expected value for every Euro bet only for the jackpot would be around only 30 cents. 
+
+Gambling is bad, don't do it.
+
+
+### Stage 5 - Training and testing regression model
+
+
+#### Step 5.1 - Split dataset
+
+The code to split the dataset into a training set and a test set with 90% of the data in the training set and the remaining 10% of the data in the test set is the following:
+```{r}
+set.seed(42)
+idx <- sample(seq_len(nrow(df)), size = floor(0.9*nrow(df)))
+
+train <- df[idx, ]
+test <- df[-idx, ]
+```
+It is convenient using a seed in the random splitting for the sake of reproducibiliy.
+
+
+#### Step 5.2 - regression model on trainig set
+
+The code to train regression model on the training set with the Education Number as predictor and the Hours Per Week as outcome is the following:
+```{r}
+model <- lm(hours.per.week ~ education.num, data=train)
+summary(model)
+```
+
+The code to train regression model on the training set with the Age as predictor and the Capital Gain as outcome is the following:
+```{r}
+model1 <- lm(capital.gain ~ age, data=train)
+summary(model1)
+```
+
+The code to train regression model on the training set with the Age and the Education Number as predictors and the Capital Gain as outcome is the following:
+```{r}
+multiModel <- lm(capital.gain ~ age + education.num, data=train)
+summary(multiModel)
+```
+
+
+#### Step 5.3 Test model on testing set.
+
+
+The code to evaluate the regression model with the Education Number as predictor and the Hours Per Week as outcome on the test set is the following:
+```{r}
+pred <- predict(model, test)
+mape <- mean(abs((pred - test$hours.per.week))/test$hours.per.week)
+mae <- mean(abs((pred - test$hours.per.week)))
+rmse <- sqrt(mean(sapply((pred - test$hours.per.week), function(x) x^2)))
+
+message(sprintf("MAPE = %f", mape))
+message(sprintf("MAE = %f", mae))
+message(sprintf("RMSE = %f", rmse))
+```
+From the MAPE, MAE and RMSE measures, it is possible concluding that there is a quite big error in performing prediction. However, it is the best we can find by using the features from this dataset.
+
+The code to evaluate the regression model with the Age as predictor and the Capital Gain as outcome on the test set is the following:
+```{r}
+pred <- predict(model1, test)
+mape <- mean(abs((pred - test$capital.gain))/test$capital.gain)
+mae <- mean(abs((pred - test$capital.gain)))
+rmse <- sqrt(mean(sapply((pred - test$capital.gain), function(x) x^2)))
+
+message(sprintf("MAPE = %f", mape))
+message(sprintf("MAE = %f", mae))
+message(sprintf("RMSE = %f", rmse))
+```
+From the MAPE, MAE and RMSE measures, it self explanatory that there is a huge error in performing prediction with this model, so it is not really possible to predict the Capital Gain from the Age with a linear model.
+
+
+The code to evaluate the regression model with the Age and the Education Number as predictors and the Capital Gain as outcome on the test set is the following:
+```{r}
+pred <- predict(multiModel, test)
+mape <- mean(abs((pred - test$capital.gain))/test$age)
+mae <- mean(abs((pred - test$capital.gain)))
+rmse <- sqrt(mean(sapply((pred - test$capital.gain), function(x) x^2)))
+
+message(sprintf("MAPE = %f", mape))
+message(sprintf("MAE = %f", mae))
+message(sprintf("RMSE = %f", rmse))
+```
+From the MAPE, MAE and RMSE measures, it is clear that there is a big error in predicting the Capital Gain from the Age and the Education Number.
+
+
+The model with the Age as predictor and the Capital Gain as predictor does not have a good accuracy as we can clearly see from the values of the MAPE, MAE and RMSE measure. Hence, so we can try to use a polynomial regression model to fit the data. The code to train and evaluate a polynomial regression model with the Age as predictor and the Capital Gain as outcome is the following:
+```{r}
+model1 <- lm(poly(capital.gain, 2) ~ age, data=train)
+summary(model1)
+
+pred <- predict(model1, test)
+mape <- mean(abs((pred - test$capital.gain))/test$age)
+mae <- mean(abs((pred - test$capital.gain)))
+rmse <- sqrt(mean(sapply((pred - test$capital.gain), function(x) x^2)))
+
+message(sprintf("MAPE = %f", mape))
+message(sprintf("MAE = %f", mae))
+message(sprintf("RMSE = %f", rmse))
+```
+The MAPE, MAE and RMSE measures show that using a polynomial model introduces an improvement to the model that predicts Capital Gain from the Age.
+
+
+By looking at the accuracy measures of the models, it is possible to conclude that there is no model producing some predictions accurate enough on the features of this dataset.
+
